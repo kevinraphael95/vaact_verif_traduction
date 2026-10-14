@@ -280,11 +280,12 @@ async function fetchCardImage(card) {
     if (img) { imageCache[key] = img; return img; }
   }
 
-  // 2. Recherche par Nom (EN / FR) dans data/cards-db.json
-  if (localCardsDb) {
+  // 2. Recherche par Nom (EN / FR) dans data/cards-db.json (propriétés c.en et c.fr)
+  if (localCardsDb && (nameEnNorm || nameFrNorm)) {
     for (const c of Object.values(localCardsDb)) {
-      const cNameNorm = (c.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if ((nameEnNorm && cNameNorm === nameEnNorm) || (nameFrNorm && cNameNorm === nameFrNorm)) {
+      const cEnNorm = (c.en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cFrNorm = (c.fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if ((nameEnNorm && cEnNorm === nameEnNorm) || (nameFrNorm && cFrNorm === nameFrNorm)) {
         const img = c?.card_images?.[0]?.image_url_cropped || c?.card_images?.[0]?.image_url;
         if (img) { imageCache[key] = img; return img; }
       }
