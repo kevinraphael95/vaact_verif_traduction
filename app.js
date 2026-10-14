@@ -4,32 +4,32 @@
 // Outil de consultation de traductions Yu-Gi-Oh! (lecture seule).
 //
 // Flux global :
-//   1. loadCardInfo()    → fetch cardinfo_fr.txt, remplit ATTRIBUTES/TYPES/RACES
-//   2. loadCards()       → fetch les 2 .cdb, extrait, fusionne → CARDS[]
-//   3. render()          → affiche la carte courante dans le DOM
-//   4. événements        → navigation, filtres, recherche, thème
+//    1. loadCardInfo()    → fetch cardinfo_fr.txt, remplit ATTRIBUTES/TYPES/RACES
+//    2. loadCards()        → fetch les 2 .cdb, extrait, fusionne → CARDS[]
+//    3. render()          → affiche la carte courante dans le DOM
+//    4. événements        → navigation, filtres, recherche, thème
 //
 // Dépendances : sql.js 1.10.3 (CDN), YGOPRODeck API (images).
 //
 // Organisation :
-//   1. Config              — URLs, constantes globales
-//   2. État                — CARDS, currentIndex, filtres
-//   3. Codes YGOPRO        — chargés depuis cardinfo_fr.txt
-//   4. Tags auto [XXX]     — extraction + rendu coloré
-//   5. Filtres             — état + application
-//   6. Toast               — messages éphémères
-//   7. Images              — fetch YGOPRODeck + cache
-//   8. Chargement          — cardinfo + SQLite + fusion + init
-//   9. Extraction          — SQL → objet carte
-//  10. Fusion              — merge EN/FR + détection orphelines
-//  11. Rendu               — affichage de la carte courante
-//  12. Navigation          — prev/next/random
-//  13. Panneau filtres     — open/close + checkboxes
-//  14. Filtres personnalisés — chips de mots-clés
-//  15. Recherche           — jump to match
-//  16. Utilitaires         — esc, resize, hauteur topbar
-//  17. Thème               — clair/sombre
-//  18. Init                — bootstrap
+//    1. Config              — URLs, constantes globales
+//    2. État                — CARDS, currentIndex, filtres
+//    3. Codes YGOPRO        — chargés depuis cardinfo_fr.txt
+//    4. Tags auto [XXX]     — extraction + rendu coloré
+//    5. Filtres             — état + application
+//    6. Toast               — messages éphémères
+//    7. Images              — recherche par ID / Nom + cache
+//    8. Chargement          — cardinfo + SQLite + fusion + init
+//    9. Extraction          — SQL → objet carte
+//   10. Fusion              — merge EN/FR + détection orphelines
+//   11. Rendu               — affichage de la carte courante
+//   12. Navigation          — prev/next/random
+//   13. Panneau filtres     — open/close + checkboxes
+//   14. Filtres personnalisés — chips de mots-clés
+//   15. Recherche           — jump to match
+//   16. Utilitaires         — esc, resize, hauteur topbar
+//   17. Thème               — clair/sombre
+//   18. Init                — bootstrap
 // ============================================================================
 
 // ============================================================================
@@ -39,7 +39,8 @@ const CDB_EN_URL = 'https://raw.githubusercontent.com/Mazorn/VAACT-Very-Accurate
 const CDB_FR_URL = 'https://raw.githubusercontent.com/kevinraphael95/VAACT-patch-fr/main/VAACT%20S1.cdb';
 const CARDINFO_URL = 'cardinfo_fr.txt';
 
-const IMAGE_FETCH_TIMEOUT_MS = 8000;
+const CARDS_DB_JSON = 'data/cards-db.json';
+const YUGI_DB_JSON = 'data/yugipedia-db.json';
 
 // ============================================================================
 // 2. ÉTAT GLOBAL
@@ -48,6 +49,9 @@ let CARDS = [];
 let currentIndex = 0;
 let customKeywords = [];
 const CUSTOM_KEYWORDS_LS = 'vaact-custom-keywords';
+
+let localCardsDb = null;
+let localYugiDb = null;
 
 (function restoreCustomKeywords() {
   try {
@@ -68,11 +72,6 @@ function saveCustomKeywords() {
 // ============================================================================
 // 3. TRADUCTION DES CODES YGOPRO (chargée depuis cardinfo_fr.txt)
 // ============================================================================
-// Les tables ATTRIBUTES / TYPES / RACES sont remplies dynamiquement au
-// démarrage par loadCardInfo(). Ça évite les bugs de valeurs en dur (comme
-// le décalage Xyz/Pendule/Lien qu'on avait avant) et permet de mettre à jour
-// les libellés sans toucher au code.
-
 let ATTRIBUTES = {};
 let TYPES = [];
 let RACES = {};
@@ -86,7 +85,7 @@ async function loadCardInfo(url) {
   let section = null;
 
   for (const rawLine of lines) {
-    const line = rawLine.replace(/\s+$/, '');   // trim end seulement
+    const line = rawLine.replace(/\s+$/, '');
     if (!line) continue;
 
     if (line.startsWith('##')) {
@@ -117,12 +116,9 @@ async function loadCardInfo(url) {
     } else if (section === 'race') {
       RACES[value] = label;
     }
-    // Les autres sections (rule, level, link marker, category, setname)
-    // ne sont pas utilisées par le Vérif pour l'instant.
   }
 
-  console.log(`✅ cardinfo chargé : ${Object.keys(ATTRIBUTES).length} attributs, ` +
-              `${TYPES.length} types, ${Object.keys(RACES).length} races`);
+  console.log(`✅ cardinfo chargé : ${Object.keys(ATTRIBUTES).length} attributs, ${TYPES.length} types, ${Object.keys(RACES).length} races`);
 }
 
 function attributeToString(attr) {
@@ -263,7 +259,7 @@ function showToast(message) {
 }
 
 // ============================================================================
-// 7. IMAGES — Recherche par ID, puis par Nom (EN / FR)
+// 7. IMAGES — Recherche dans les fichiers data/ locaux par ID puis par Nom
 // ============================================================================
 const imageCache = {};
 
@@ -271,54 +267,44 @@ async function fetchCardImage(card) {
   if (!card) return null;
   const key = String(card.id || card.name_en || card.name_fr).trim();
 
-  // 1. Vérification du cache mémoire rapide
   if (imageCache[key] !== undefined) return imageCache[key];
 
   const idStr = String(card.id || '').trim();
-  const nameEn = (card.name_en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const nameFr = (card.name_fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const nameEnNorm = (card.name_en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const nameFrNorm = (card.name_fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // ── A. RECHERCHE PAR ID DANS cards-db.json (memCacheEn) ──
-  if (idStr && window.memCacheEn && window.memCacheEn.has(idStr)) {
-    const cachedCard = window.memCacheEn.get(idStr);
-    const img = cachedCard?.card_images?.[0]?.image_url_cropped 
-             || cachedCard?.card_images?.[0]?.image_url || null;
-    if (img) {
-      imageCache[key] = img;
-      return img;
-    }
+  // 1. Recherche par ID dans data/cards-db.json
+  if (idStr && localCardsDb && localCardsDb[idStr]) {
+    const c = localCardsDb[idStr];
+    const img = c?.card_images?.[0]?.image_url_cropped || c?.card_images?.[0]?.image_url;
+    if (img) { imageCache[key] = img; return img; }
   }
 
-  // ── B. SECOURS : RECHERCHE PAR NOM (EN puis FR) DANS cards-db.json ──
-  if (window.memCacheEn) {
-    for (const cachedCard of window.memCacheEn.values()) {
-      const cNameEn = (cachedCard.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if ((nameEn && cNameEn === nameEn) || (nameFr && cNameEn === nameFr)) {
-        const img = cachedCard?.card_images?.[0]?.image_url_cropped 
-                 || cachedCard?.card_images?.[0]?.image_url || null;
-        if (img) {
-          imageCache[key] = img;
-          return img;
-        }
+  // 2. Recherche par Nom (EN / FR) dans data/cards-db.json
+  if (localCardsDb) {
+    for (const c of Object.values(localCardsDb)) {
+      const cNameNorm = (c.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if ((nameEnNorm && cNameNorm === nameEnNorm) || (nameFrNorm && cNameNorm === nameFrNorm)) {
+        const img = c?.card_images?.[0]?.image_url_cropped || c?.card_images?.[0]?.image_url;
+        if (img) { imageCache[key] = img; return img; }
       }
     }
   }
 
-  // ── C. SECOURS : RECHERCHE DANS YUGIPEDIA LOCAL ──
-  if (window.yugiCache) {
-    // Tentative par ID
-    if (idStr && window.yugiCache.has(idStr)) {
-      const yCard = window.yugiCache.get(idStr);
-      const img = yCard.img || yCard.img_en || null;
+  // 3. Recherche dans data/yugipedia-db.json
+  if (localYugiDb) {
+    if (idStr && localYugiDb[idStr]) {
+      const y = localYugiDb[idStr];
+      const img = y.img || y.img_en;
       if (img) { imageCache[key] = img; return img; }
     }
-    // Tentative par Nom
-    for (const [yKey, yCard] of window.yugiCache.entries()) {
-      const yNameEn = (yCard.en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const yNameFr = (yCard.fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if ((nameEn && (yKey === nameEn || yNameEn === nameEn)) || 
-          (nameFr && (yKey === nameFr || yNameFr === nameFr))) {
-        const img = yCard.img || yCard.img_en || null;
+    for (const [yKey, y] of Object.entries(localYugiDb)) {
+      const yKeyNorm = yKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const yEnNorm = (y.en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const yFrNorm = (y.fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if ((nameEnNorm && (yKeyNorm === nameEnNorm || yEnNorm === nameEnNorm)) ||
+          (nameFrNorm && (yKeyNorm === nameFrNorm || yFrNorm === nameFrNorm))) {
+        const img = y.img || y.img_en;
         if (img) { imageCache[key] = img; return img; }
       }
     }
@@ -371,8 +357,25 @@ async function loadCardImage(card) {
 }
 
 // ============================================================================
-// 8. CHARGEMENT — cardinfo + SQLite + fusion
+// 8. CHARGEMENT — cardinfo + JSON locales + SQLite + fusion
 // ============================================================================
+async function loadLocalDatabases() {
+  try {
+    const [resCards, resYugi] = await Promise.allSettled([
+      fetch(CARDS_DB_JSON).then(r => r.ok ? r.json() : null),
+      fetch(YUGI_DB_JSON).then(r => r.ok ? r.json() : null)
+    ]);
+    if (resCards.status === 'fulfilled' && resCards.value) {
+      localCardsDb = resCards.value;
+    }
+    if (resYugi.status === 'fulfilled' && resYugi.value) {
+      localYugiDb = resYugi.value;
+    }
+  } catch (e) {
+    console.warn('Erreur chargement DB locales:', e);
+  }
+}
+
 async function fetchBuffer(url, label) {
   const res = await fetch(url);
   if (!res.ok) {
@@ -395,6 +398,9 @@ async function loadCards() {
   const loadingText = document.getElementById('loadingText');
 
   try {
+    loadingText.textContent = 'Chargement des bases d\'images locales…';
+    await loadLocalDatabases();
+
     loadingText.textContent = 'Chargement du cardinfo…';
     await loadCardInfo(CARDINFO_URL);
 
@@ -554,18 +560,6 @@ function mergeCards(enCards, frCards) {
       race: fr.race ?? null,
       missingEn: true,
     });
-  }
-
-  if (enOnly.length) {
-    console.warn(`⚠️ ${enOnly.length} carte(s) présente(s) en EN mais absente(s) en FR :`);
-    console.table(enOnly);
-  }
-  if (frOnly.length) {
-    console.warn(`⚠️ ${frOnly.length} carte(s) présente(s) en FR mais absente(s) en EN :`);
-    console.table(frOnly);
-  }
-  if (!enOnly.length && !frOnly.length) {
-    console.log('✅ Aucune carte orpheline — les deux fichiers sont synchronisés.');
   }
 
   result.sort((a, b) => parseInt(a.id) - parseInt(b.id));
