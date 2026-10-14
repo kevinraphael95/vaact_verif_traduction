@@ -263,35 +263,63 @@ function showToast(message) {
 }
 
 // ============================================================================
-// 7. IMAGES — Recherche locale et affichage
+// 7. IMAGES — Recherche par ID, puis par Nom (EN / FR)
 // ============================================================================
 const imageCache = {};
 
 async function fetchCardImage(card) {
-  if (!card || !card.id) return null;
-  const key = String(card.id).trim();
+  if (!card) return null;
+  const key = String(card.id || card.name_en || card.name_fr).trim();
 
+  // 1. Vérification du cache mémoire rapide
   if (imageCache[key] !== undefined) return imageCache[key];
 
-  if (window.memCacheEn && window.memCacheEn.has(key)) {
-    const cachedCard = window.memCacheEn.get(key);
-    const localImg = cachedCard?.card_images?.[0]?.image_url_cropped 
-                  || cachedCard?.card_images?.[0]?.image_url 
-                  || null;
-    if (localImg) {
-      imageCache[key] = localImg;
-      return localImg;
+  const idStr = String(card.id || '').trim();
+  const nameEn = (card.name_en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const nameFr = (card.name_fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // ── A. RECHERCHE PAR ID DANS cards-db.json (memCacheEn) ──
+  if (idStr && window.memCacheEn && window.memCacheEn.has(idStr)) {
+    const cachedCard = window.memCacheEn.get(idStr);
+    const img = cachedCard?.card_images?.[0]?.image_url_cropped 
+             || cachedCard?.card_images?.[0]?.image_url || null;
+    if (img) {
+      imageCache[key] = img;
+      return img;
     }
   }
 
+  // ── B. SECOURS : RECHERCHE PAR NOM (EN puis FR) DANS cards-db.json ──
+  if (window.memCacheEn) {
+    for (const cachedCard of window.memCacheEn.values()) {
+      const cNameEn = (cachedCard.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if ((nameEn && cNameEn === nameEn) || (nameFr && cNameEn === nameFr)) {
+        const img = cachedCard?.card_images?.[0]?.image_url_cropped 
+                 || cachedCard?.card_images?.[0]?.image_url || null;
+        if (img) {
+          imageCache[key] = img;
+          return img;
+        }
+      }
+    }
+  }
+
+  // ── C. SECOURS : RECHERCHE DANS YUGIPEDIA LOCAL ──
   if (window.yugiCache) {
-    const normName = (card.name_en || card.name_fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (normName && window.yugiCache.has(normName)) {
-      const yugiCard = window.yugiCache.get(normName);
-      const yugiImg = yugiCard.img || yugiCard.img_en || null;
-      if (yugiImg) {
-        imageCache[key] = yugiImg;
-        return yugiImg;
+    // Tentative par ID
+    if (idStr && window.yugiCache.has(idStr)) {
+      const yCard = window.yugiCache.get(idStr);
+      const img = yCard.img || yCard.img_en || null;
+      if (img) { imageCache[key] = img; return img; }
+    }
+    // Tentative par Nom
+    for (const [yKey, yCard] of window.yugiCache.entries()) {
+      const yNameEn = (yCard.en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const yNameFr = (yCard.fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if ((nameEn && (yKey === nameEn || yNameEn === nameEn)) || 
+          (nameFr && (yKey === nameFr || yNameFr === nameFr))) {
+        const img = yCard.img || yCard.img_en || null;
+        if (img) { imageCache[key] = img; return img; }
       }
     }
   }
