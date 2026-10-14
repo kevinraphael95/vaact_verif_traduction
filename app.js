@@ -263,7 +263,7 @@ function showToast(message) {
 }
 
 // ============================================================================
-// 7. IMAGES — Recherche dans la DB locale puis fallback local
+// 7. IMAGES — Recherche locale et affichage
 // ============================================================================
 const imageCache = {};
 
@@ -271,10 +271,8 @@ async function fetchCardImage(card) {
   if (!card || !card.id) return null;
   const key = String(card.id).trim();
 
-  // 1. Vérification du cache mémoire rapide
   if (imageCache[key] !== undefined) return imageCache[key];
 
-  // 2. Recherche directe dans la base de données locale (cards-db.json / memCache)
   if (window.memCacheEn && window.memCacheEn.has(key)) {
     const cachedCard = window.memCacheEn.get(key);
     const localImg = cachedCard?.card_images?.[0]?.image_url_cropped 
@@ -286,7 +284,6 @@ async function fetchCardImage(card) {
     }
   }
 
-  // 3. Recherche dans Yugipedia local (si dispo)
   if (window.yugiCache) {
     const normName = (card.name_en || card.name_fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     if (normName && window.yugiCache.has(normName)) {
@@ -299,9 +296,50 @@ async function fetchCardImage(card) {
     }
   }
 
-  // 4. Si c'est une carte VAACT/Custom introuvable en local, on ne surcharge pas l'API
   imageCache[key] = null;
   return null;
+}
+
+function ensurePlaceholder(parent) {
+  let ph = parent.querySelector('.img-placeholder');
+  if (!ph) {
+    ph = document.createElement('div');
+    ph.className = 'img-placeholder';
+    ph.textContent = '🃏';
+    parent.style.position = 'relative';
+    parent.appendChild(ph);
+  }
+  return ph;
+}
+
+async function loadCardImage(card) {
+  const imgEl = document.getElementById('cardImg');
+  if (!imgEl) return;
+
+  imgEl.onload = null;
+  imgEl.onerror = null;
+  imgEl.removeAttribute('src');
+  imgEl.style.display = 'none';
+  imgEl.alt = card?.name_fr || card?.name_en || 'Carte';
+
+  const parent = imgEl.parentElement;
+  ensurePlaceholder(parent);
+
+  const url = await fetchCardImage(card);
+
+  if (getFilteredCards()[currentIndex] !== card) return;
+  if (!url) return;
+
+  imgEl.onload = () => {
+    const ph = parent.querySelector('.img-placeholder');
+    if (ph) ph.remove();
+    imgEl.style.display = 'block';
+  };
+  imgEl.onerror = () => {
+    imgEl.removeAttribute('src');
+    imgEl.style.display = 'none';
+  };
+  imgEl.src = url;
 }
 
 // ============================================================================
