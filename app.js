@@ -263,134 +263,45 @@ function showToast(message) {
 }
 
 // ============================================================================
-// 7. IMAGES — YGOPRODeck + cache double (mémoire + localStorage)
+// 7. IMAGES — Recherche dans la DB locale puis fallback local
 // ============================================================================
 const imageCache = {};
-
-function cleanImageUrl(raw) {
-  if (!raw) return null;
-  let str = String(raw).trim();
-  
-  if (str.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(str);
-      str = parsed.url || parsed.image_url || parsed.image_url_cropped || '';
-    } catch (e) {
-      return null;
-    }
-  }
-
-  str = str.replace(/^["']|["']$/g, '').trim();
-
-  if (str.startsWith('http://') || str.startsWith('https://')) {
-    return str;
-  }
-  return null;
-}
 
 async function fetchCardImage(card) {
   if (!card || !card.id) return null;
   const key = String(card.id).trim();
 
+  // 1. Vérification du cache mémoire rapide
   if (imageCache[key] !== undefined) return imageCache[key];
 
-  const lsKey = 'img_' + key;
-  try {
-    const cached = localStorage.getItem(lsKey);
-    const cleanedCache = cleanImageUrl(cached);
-    if (cleanedCache) {
-      imageCache[key] = cleanedCache;
-      return cleanedCache;
+  // 2. Recherche directe dans la base de données locale (cards-db.json / memCache)
+  if (window.memCacheEn && window.memCacheEn.has(key)) {
+    const cachedCard = window.memCacheEn.get(key);
+    const localImg = cachedCard?.card_images?.[0]?.image_url_cropped 
+                  || cachedCard?.card_images?.[0]?.image_url 
+                  || null;
+    if (localImg) {
+      imageCache[key] = localImg;
+      return localImg;
     }
-  } catch (e) {}
-
-  const namesToTry = [];
-  if (card.name_en) namesToTry.push(card.name_en.trim());
-  if (card.name_fr && card.name_fr !== card.name_en) namesToTry.push(card.name_fr.trim());
-
-  if (!namesToTry.length) {
-    imageCache[key] = null;
-    return null;
   }
 
-  let imgUrl = null;
-
-  for (const name of namesToTry) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
-
-    try {
-      // Normalisation des apostrophes et guillemets pour éviter les erreurs 400
-      const sanitizedName = name
-        .replace(/[\u2018\u2019\u02bc`]/g, "'")
-        .replace(/\s+/g, ' ');
-
-      const url = `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(sanitizedName)}`;
-      
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
-
-      if (res.ok) {
-        const data = await res.json();
-        const rawUrl = data.data?.[0]?.card_images?.[0]?.image_url_cropped
-                    || data.data?.[0]?.card_images?.[0]?.image_url
-                    || null;
-        
-        imgUrl = cleanImageUrl(rawUrl);
-        if (imgUrl) break;
+  // 3. Recherche dans Yugipedia local (si dispo)
+  if (window.yugiCache) {
+    const normName = (card.name_en || card.name_fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (normName && window.yugiCache.has(normName)) {
+      const yugiCard = window.yugiCache.get(normName);
+      const yugiImg = yugiCard.img || yugiCard.img_en || null;
+      if (yugiImg) {
+        imageCache[key] = yugiImg;
+        return yugiImg;
       }
-    } catch (err) {
-      clearTimeout(timer);
     }
   }
 
-  imageCache[key] = imgUrl;
-  if (imgUrl) {
-    try { localStorage.setItem(lsKey, imgUrl); } catch (e) {}
-  }
-  return imgUrl;
-}
-
-function ensurePlaceholder(parent) {
-  let ph = parent.querySelector('.img-placeholder');
-  if (!ph) {
-    ph = document.createElement('div');
-    ph.className = 'img-placeholder';
-    ph.textContent = '🃏';
-    parent.style.position = 'relative';
-    parent.appendChild(ph);
-  }
-  return ph;
-}
-
-async function loadCardImage(card) {
-  const imgEl = document.getElementById('cardImg');
-  if (!imgEl) return;
-
-  imgEl.onload = null;
-  imgEl.onerror = null;
-  imgEl.removeAttribute('src');
-  imgEl.style.display = 'none';
-  imgEl.alt = card?.name_fr || card?.name_en || 'Carte';
-
-  const parent = imgEl.parentElement;
-  ensurePlaceholder(parent);
-
-  const imgUrl = await fetchCardImage(card);
-
-  if (getFilteredCards()[currentIndex] !== card) return;
-  if (!imgUrl) return;
-
-  imgEl.onload = () => {
-    const ph = parent.querySelector('.img-placeholder');
-    if (ph) ph.remove();
-    imgEl.style.display = 'block';
-  };
-  imgEl.onerror = () => {
-    imgEl.removeAttribute('src');
-    imgEl.style.display = 'none';
-  };
-  imgEl.src = imgUrl;
+  // 4. Si c'est une carte VAACT/Custom introuvable en local, on ne surcharge pas l'API
+  imageCache[key] = null;
+  return null;
 }
 
 // ============================================================================
