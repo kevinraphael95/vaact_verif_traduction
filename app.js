@@ -276,7 +276,7 @@ async function fetchCardImage(card) {
   // 1. Recherche par ID dans data/cards-db.json
   if (idStr && localCardsDb && localCardsDb[idStr]) {
     const c = localCardsDb[idStr];
-    const img = c?.card_images?.[0]?.image_url_cropped || c?.card_images?.[0]?.image_url;
+    const img = c?.img_cropped || c?.img_full;
     if (img) { imageCache[key] = img; return img; }
   }
 
@@ -286,7 +286,7 @@ async function fetchCardImage(card) {
       const cEnNorm = (c.en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const cFrNorm = (c.fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       if ((nameEnNorm && cEnNorm === nameEnNorm) || (nameFrNorm && cFrNorm === nameFrNorm)) {
-        const img = c?.card_images?.[0]?.image_url_cropped || c?.card_images?.[0]?.image_url;
+        const img = c?.img_cropped || c?.img_full;
         if (img) { imageCache[key] = img; return img; }
       }
     }
