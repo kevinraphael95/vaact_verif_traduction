@@ -269,7 +269,7 @@ const imageCache = {};
 
 async function fetchCardImage(card) {
   if (!card || !card.id) return null;
-  const key = card.id;
+  const key = String(card.id).trim();
 
   if (imageCache[key] !== undefined) return imageCache[key];
 
@@ -282,7 +282,10 @@ async function fetchCardImage(card) {
     }
   } catch (e) {}
 
-  const name = card.name_en || card.name_fr;
+  // Nettoyage strict du nom (suppression des guillemets ou caractères parasites potentiels)
+  let name = card.name_en || card.name_fr || '';
+  name = String(name).replace(/["'\[\]]/g, '').trim();
+
   if (!name) {
     imageCache[key] = null;
     return null;
@@ -301,9 +304,17 @@ async function fetchCardImage(card) {
       return null;
     }
     const data = await res.json();
-    const imgUrl = data.data?.[0]?.card_images?.[0]?.image_url_cropped
-                || data.data?.[0]?.card_images?.[0]?.image_url
-                || null;
+    
+    // Récupération sécurisée et nettoyage de l'URL de l'image
+    let imgUrl = data.data?.[0]?.card_images?.[0]?.image_url_cropped
+              || data.data?.[0]?.card_images?.[0]?.image_url
+              || null;
+
+    if (imgUrl) {
+      // S'assure de nettoyer les éventuels guillemets parasites dans l'URL finale
+      imgUrl = String(imgUrl).replace(/["']/g, '').trim();
+    }
+
     imageCache[key] = imgUrl;
     if (imgUrl) {
       try { localStorage.setItem(lsKey, imgUrl); } catch (e) {}
