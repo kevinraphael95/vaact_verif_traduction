@@ -265,6 +265,29 @@ function showToast(message) {
 // ============================================================================
 // 7. IMAGES — YGOPRODeck + cache double (mémoire + localStorage)
 // ============================================================================
+const imageCache = {};
+
+function cleanImageUrl(raw) {
+  if (!raw) return null;
+  let str = String(raw).trim();
+  
+  if (str.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(str);
+      str = parsed.url || parsed.image_url || parsed.image_url_cropped || '';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  str = str.replace(/^["']|["']$/g, '').trim();
+
+  if (str.startsWith('http://') || str.startsWith('https://')) {
+    return str;
+  }
+  return null;
+}
+
 async function fetchCardImage(card) {
   if (!card || !card.id) return null;
   const key = String(card.id).trim();
@@ -297,7 +320,7 @@ async function fetchCardImage(card) {
     const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
 
     try {
-      // Normalisation radicale : remplace toutes les variantes d'apostrophes et guillemets par un simple '
+      // Normalisation des apostrophes et guillemets pour éviter les erreurs 400
       const sanitizedName = name
         .replace(/[\u2018\u2019\u02bc`]/g, "'")
         .replace(/\s+/g, ' ');
@@ -326,6 +349,48 @@ async function fetchCardImage(card) {
     try { localStorage.setItem(lsKey, imgUrl); } catch (e) {}
   }
   return imgUrl;
+}
+
+function ensurePlaceholder(parent) {
+  let ph = parent.querySelector('.img-placeholder');
+  if (!ph) {
+    ph = document.createElement('div');
+    ph.className = 'img-placeholder';
+    ph.textContent = '🃏';
+    parent.style.position = 'relative';
+    parent.appendChild(ph);
+  }
+  return ph;
+}
+
+async function loadCardImage(card) {
+  const imgEl = document.getElementById('cardImg');
+  if (!imgEl) return;
+
+  imgEl.onload = null;
+  imgEl.onerror = null;
+  imgEl.removeAttribute('src');
+  imgEl.style.display = 'none';
+  imgEl.alt = card?.name_fr || card?.name_en || 'Carte';
+
+  const parent = imgEl.parentElement;
+  ensurePlaceholder(parent);
+
+  const imgUrl = await fetchCardImage(card);
+
+  if (getFilteredCards()[currentIndex] !== card) return;
+  if (!imgUrl) return;
+
+  imgEl.onload = () => {
+    const ph = parent.querySelector('.img-placeholder');
+    if (ph) ph.remove();
+    imgEl.style.display = 'block';
+  };
+  imgEl.onerror = () => {
+    imgEl.removeAttribute('src');
+    imgEl.style.display = 'none';
+  };
+  imgEl.src = imgUrl;
 }
 
 // ============================================================================
