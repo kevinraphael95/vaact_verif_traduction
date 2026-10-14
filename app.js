@@ -273,7 +273,7 @@ let imageIndexByName = null;
 // Délai avant de lancer le chargement d'une image : si on change de carte
 // avant la fin du délai, la demande est annulée (évite les 429 de Yugipedia
 // quand on enchaîne Suivant / Aléatoire).
-const IMAGE_LOAD_DELAY_MS = 300;
+const IMAGE_LOAD_DELAY_MS = 150;
 let imageTimer = null;
 
 const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
