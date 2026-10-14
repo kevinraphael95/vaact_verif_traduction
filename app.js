@@ -267,6 +267,30 @@ function showToast(message) {
 // ============================================================================
 const imageCache = {};
 
+function cleanImageUrl(raw) {
+  if (!raw) return null;
+  let str = String(raw).trim();
+  
+  // Si c'est un objet JSON sous forme de texte (ex: {"url": "..."})
+  if (str.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(str);
+      str = parsed.url || parsed.image_url || parsed.image_url_cropped || '';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Nettoie les guillemets ou caractères indésirables
+  str = str.replace(/^["']|["']$/g, '').trim();
+
+  // Vérifie que c'est bien une URL HTTP/HTTPS valide
+  if (str.startsWith('http://') || str.startsWith('https://')) {
+    return str;
+  }
+  return null;
+}
+
 async function fetchCardImage(card) {
   if (!card || !card.id) return null;
   const key = String(card.id).trim();
@@ -276,16 +300,14 @@ async function fetchCardImage(card) {
   const lsKey = 'img_' + key;
   try {
     const cached = localStorage.getItem(lsKey);
-    if (cached) {
-      imageCache[key] = cached;
-      return cached;
+    const cleanedCache = cleanImageUrl(cached);
+    if (cleanedCache) {
+      imageCache[key] = cleanedCache;
+      return cleanedCache;
     }
   } catch (e) {}
 
-  // Nettoyage strict du nom (suppression des guillemets ou caractères parasites potentiels)
-  let name = card.name_en || card.name_fr || '';
-  name = String(name).replace(/["'\[\]]/g, '').trim();
-
+  const name = card.name_en || card.name_fr;
   if (!name) {
     imageCache[key] = null;
     return null;
@@ -295,7 +317,7 @@ async function fetchCardImage(card) {
   const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
 
   try {
-    const url = `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(name)}`;
+    const url = `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(name.trim())}`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
 
@@ -304,16 +326,11 @@ async function fetchCardImage(card) {
       return null;
     }
     const data = await res.json();
+    const rawUrl = data.data?.[0]?.card_images?.[0]?.image_url_cropped
+                || data.data?.[0]?.card_images?.[0]?.image_url
+                || null;
     
-    // Récupération sécurisée et nettoyage de l'URL de l'image
-    let imgUrl = data.data?.[0]?.card_images?.[0]?.image_url_cropped
-              || data.data?.[0]?.card_images?.[0]?.image_url
-              || null;
-
-    if (imgUrl) {
-      // S'assure de nettoyer les éventuels guillemets parasites dans l'URL finale
-      imgUrl = String(imgUrl).replace(/["']/g, '').trim();
-    }
+    const imgUrl = cleanImageUrl(rawUrl);
 
     imageCache[key] = imgUrl;
     if (imgUrl) {
@@ -368,7 +385,6 @@ async function loadCardImage(card) {
   };
   imgEl.src = imgUrl;
 }
-
 // ============================================================================
 // 8. CHARGEMENT — cardinfo + SQLite + fusion
 // ============================================================================
