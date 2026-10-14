@@ -4,12 +4,14 @@
 // Outil de consultation de traductions Yu-Gi-Oh! (lecture seule).
 //
 // Flux global :
-//    1. loadCardInfo()    → fetch cardinfo_fr.txt, remplit ATTRIBUTES/TYPES/RACES
-//    2. loadCards()        → fetch les 2 .cdb, extrait, fusionne → CARDS[]
-//    3. render()          → affiche la carte courante dans le DOM
-//    4. événements        → navigation, filtres, recherche, thème
+//    1. loadCardInfo()      → fetch cardinfo_fr.txt (depuis data/)
+//    2. loadLocalDatabases() → fetch cards-db.json + yugipedia-db.json
+//    3. buildImageIndex()   → construit un index { id → url, nom → url }
+//    4. loadCards()         → fetch les 2 .cdb, extrait, fusionne → CARDS[]
+//    5. render()            → affiche la carte courante dans le DOM
+//    6. événements          → navigation, filtres, recherche, thème
 //
-// Dépendances : sql.js 1.10.3 (CDN), YGOPRODeck API (images).
+// Dépendances : sql.js 1.10.3 (CDN).
 //
 // Organisation :
 //    1. Config              — URLs, constantes globales
@@ -18,8 +20,8 @@
 //    4. Tags auto [XXX]     — extraction + rendu coloré
 //    5. Filtres             — état + application
 //    6. Toast               — messages éphémères
-//    7. Images              — recherche par ID / Nom + cache
-//    8. Chargement          — cardinfo + SQLite + fusion + init
+//    7. Images              — index préconstruit depuis data/*.json
+//    8. Chargement          — cardinfo + JSON + SQLite + fusion + init
 //    9. Extraction          — SQL → objet carte
 //   10. Fusion              — merge EN/FR + détection orphelines
 //   11. Rendu               — affichage de la carte courante
@@ -37,10 +39,13 @@
 // ============================================================================
 const CDB_EN_URL = 'https://raw.githubusercontent.com/Mazorn/VAACT-Very-Accurate-Anime-Character-Tournament-/main/VAACT%20S1.cdb';
 const CDB_FR_URL = 'https://raw.githubusercontent.com/kevinraphael95/VAACT-patch-fr/main/VAACT%20S1.cdb';
-const CARDINFO_URL = 'cardinfo_fr.txt';
 
-const CARDS_DB_JSON = 'data/cards-db.json';
-const YUGI_DB_JSON = 'data/yugipedia-db.json';
+// Base commune : toutes les données (cardinfo + JSON d'images) sont dans le
+// dossier data/ du repo ygo_outil_fr.
+const DATA_BASE = 'https://kevinraphael95.github.io/ygo_outil_fr/data/';
+const CARDINFO_URL = DATA_BASE + 'cardinfo_fr.txt';
+const CARDS_DB_JSON = DATA_BASE + 'cards-db.json';
+const YUGI_DB_JSON = DATA_BASE + 'yugipedia-db.json';
 
 // ============================================================================
 // 2. ÉTAT GLOBAL
@@ -259,60 +264,70 @@ function showToast(message) {
 }
 
 // ============================================================================
-// 7. IMAGES — Recherche dans les fichiers data/ locaux par ID puis par Nom
+// 7. IMAGES — Index préconstruit depuis cards-db.json + yugipedia-db.json
 // ============================================================================
 const imageCache = {};
+let imageIndexById = null;
+let imageIndexByName = null;
+
+const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+function buildImageIndex() {
+  imageIndexById = new Map();
+  imageIndexByName = new Map();
+
+  if (localCardsDb) {
+    for (const [id, c] of Object.entries(localCardsDb)) {
+      const img = c?.img_cropped || c?.img_full;
+      if (!img) continue;
+      imageIndexById.set(String(id).trim(), img);
+      for (const n of [c.en, c.fr]) {
+        const k = normName(n);
+        if (k && !imageIndexByName.has(k)) imageIndexByName.set(k, img);
+      }
+    }
+  }
+
+  if (localYugiDb) {
+    for (const [key, y] of Object.entries(localYugiDb)) {
+      const img = y?.img || y?.img_en;
+      if (!img) continue;
+      if (!imageIndexById.has(String(key).trim())) {
+        imageIndexById.set(String(key).trim(), img);
+      }
+      for (const n of [key, y.en, y.fr]) {
+        const k = normName(n);
+        if (k && !imageIndexByName.has(k)) imageIndexByName.set(k, img);
+      }
+    }
+  }
+
+  console.log(`✅ Index images : ${imageIndexById.size} par ID, ${imageIndexByName.size} par nom`);
+}
+
+function findImageUrl(card) {
+  if (!card) return null;
+  const id = String(card.id || '').trim();
+
+  if (id && imageIndexById?.has(id)) return imageIndexById.get(id);
+
+  const nEn = normName(card.name_en);
+  if (nEn && imageIndexByName?.has(nEn)) return imageIndexByName.get(nEn);
+
+  const nFr = normName(card.name_fr);
+  if (nFr && imageIndexByName?.has(nFr)) return imageIndexByName.get(nFr);
+
+  return null;
+}
 
 async function fetchCardImage(card) {
   if (!card) return null;
-  const key = String(card.id || card.name_en || card.name_fr).trim();
-
+  const key = String(card.id || card.name_en || card.name_fr || '').trim();
   if (imageCache[key] !== undefined) return imageCache[key];
 
-  const idStr = String(card.id || '').trim();
-  const nameEnNorm = (card.name_en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const nameFrNorm = (card.name_fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-  // 1. Recherche par ID dans data/cards-db.json
-  if (idStr && localCardsDb && localCardsDb[idStr]) {
-    const c = localCardsDb[idStr];
-    const img = c?.img_cropped || c?.img_full;
-    if (img) { imageCache[key] = img; return img; }
-  }
-
-  // 2. Recherche par Nom (EN / FR) dans data/cards-db.json (propriétés c.en et c.fr)
-  if (localCardsDb && (nameEnNorm || nameFrNorm)) {
-    for (const c of Object.values(localCardsDb)) {
-      const cEnNorm = (c.en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const cFrNorm = (c.fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if ((nameEnNorm && cEnNorm === nameEnNorm) || (nameFrNorm && cFrNorm === nameFrNorm)) {
-        const img = c?.img_cropped || c?.img_full;
-        if (img) { imageCache[key] = img; return img; }
-      }
-    }
-  }
-
-  // 3. Recherche dans data/yugipedia-db.json
-  if (localYugiDb) {
-    if (idStr && localYugiDb[idStr]) {
-      const y = localYugiDb[idStr];
-      const img = y.img || y.img_en;
-      if (img) { imageCache[key] = img; return img; }
-    }
-    for (const [yKey, y] of Object.entries(localYugiDb)) {
-      const yKeyNorm = yKey.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const yEnNorm = (y.en || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const yFrNorm = (y.fr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if ((nameEnNorm && (yKeyNorm === nameEnNorm || yEnNorm === nameEnNorm)) ||
-          (nameFrNorm && (yKeyNorm === nameFrNorm || yFrNorm === nameFrNorm))) {
-        const img = y.img || y.img_en;
-        if (img) { imageCache[key] = img; return img; }
-      }
-    }
-  }
-
-  imageCache[key] = null;
-  return null;
+  const url = findImageUrl(card);
+  imageCache[key] = url || null;
+  return imageCache[key];
 }
 
 function ensurePlaceholder(parent) {
@@ -401,6 +416,7 @@ async function loadCards() {
   try {
     loadingText.textContent = 'Chargement des bases d\'images locales…';
     await loadLocalDatabases();
+    buildImageIndex();
 
     loadingText.textContent = 'Chargement du cardinfo…';
     await loadCardInfo(CARDINFO_URL);
