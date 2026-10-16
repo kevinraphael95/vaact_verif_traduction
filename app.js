@@ -11,6 +11,10 @@
 //    5. render()            → affiche la carte courante dans le DOM
 //    6. événements          → navigation, filtres, recherche, thème
 //
+// 🆕 Les infos structurelles (type, attribut, race, ATK/DEF, niveau) sont
+//    affichées pour l'original (EN) ET pour la traduction (FR). Les lignes qui
+//    diffèrent sont surlignées en rouge des deux côtés.
+//
 // Dépendances : sql.js 1.10.3 (CDN).
 //
 // Organisation :
@@ -150,6 +154,33 @@ function formatStat(value) {
   if (value === -2 || value === -1) return '?';
   if (value < 0) return '0';
   return String(value);
+}
+
+// 🆕 Niveau : on masque les bits d'échelle Pendule (bits hauts du champ level).
+function formatLevel(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  return String(Number(v) & 0xff);
+}
+
+// 🆕 Champs comparés entre l'original (EN) et la traduction (FR).
+const INFO_FIELDS = [
+  ['type', 'Type'],
+  ['attr', 'Attribut'],
+  ['race', 'Race'],
+  ['stats', 'ATK / DEF'],
+  ['level', 'Niveau'],
+];
+
+// Transforme les données brutes d'une carte (type, atk, def…) en textes affichables.
+function cardInfoValues(d) {
+  if (!d) return null;
+  return {
+    type: typeToString(d.type),
+    attr: attributeToString(d.attribute),
+    race: raceToString(d.race),
+    stats: formatStat(d.atk) + ' / ' + formatStat(d.def),
+    level: formatLevel(d.level),
+  };
 }
 
 // ============================================================================
@@ -527,6 +558,19 @@ function extractCards(db) {
 // ============================================================================
 // 10. FUSION — merge EN/FR + détection orphelines
 // ============================================================================
+// 🆕 `fr_data` conserve les infos structurelles du fichier FR (type, atk, def,
+//    level, race, attribute) pour pouvoir les comparer à celles de l'original.
+function frDataOf(fr) {
+  return {
+    type: fr.type,
+    atk: fr.atk,
+    def: fr.def,
+    level: fr.level,
+    race: fr.race,
+    attribute: fr.attribute,
+  };
+}
+
 function mergeCards(enCards, frCards) {
   const result = [];
   const enOnly = [];
@@ -567,6 +611,7 @@ function mergeCards(enCards, frCards) {
       level: en.level ?? null,
       attribute: en.attribute || '',
       race: en.race ?? null,
+      fr_data: frDataOf(fr),
     });
   }
 
@@ -586,6 +631,7 @@ function mergeCards(enCards, frCards) {
       level: fr.level ?? null,
       attribute: fr.attribute || '',
       race: fr.race ?? null,
+      fr_data: frDataOf(fr),
       missingEn: true,
     });
   }
@@ -597,16 +643,27 @@ function mergeCards(enCards, frCards) {
 // ============================================================================
 // 11. RENDU — affichage de la carte courante
 // ============================================================================
+// Correspondance champ comparé → id de la ligne d'info côté original (EN).
+const INFO_ROW_IDS = [
+  ['type', 'infoType'],
+  ['attr', 'infoAttr'],
+  ['race', 'infoRace'],
+  ['stats', 'infoStats'],
+  ['level', 'infoLevel'],
+];
+
 function render() {
   if (!CARDS.length) return;
   const filtered = getFilteredCards();
 
   if (!filtered.length) {
-    document.getElementById('infoId').textContent = '—';
-    document.getElementById('infoType').textContent = '—';
-    document.getElementById('infoAttr').textContent = '—';
-    document.getElementById('infoStats').textContent = '—';
-    document.getElementById('infoLevel').textContent = '—';
+    ['infoId', 'infoType', 'infoAttr', 'infoRace', 'infoStats', 'infoLevel'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = '—';
+        el.closest('.info-row')?.classList.remove('diff');
+      }
+    });
     document.getElementById('origName').textContent = '—';
     document.getElementById('origDesc').textContent = 'Aucune carte ne correspond aux filtres actifs.';
     document.getElementById('translationSection').innerHTML = '';
@@ -632,12 +689,21 @@ function render() {
 
   loadCardImage(card);
 
+  // Infos de l'original (EN)
+  const en = cardInfoValues(card);
+  const fr = cardInfoValues(card.fr_data);
   document.getElementById('infoId').textContent = card.id || '—';
-  document.getElementById('infoType').textContent = typeToString(card.type);
-  document.getElementById('infoAttr').textContent = attributeToString(card.attribute);
-  document.getElementById('infoStats').textContent =
-    formatStat(card.atk) + ' / ' + formatStat(card.def);
-  document.getElementById('infoLevel').textContent = card.level ?? '—';
+  document.getElementById('infoType').textContent = en.type;
+  document.getElementById('infoAttr').textContent = en.attr;
+  document.getElementById('infoRace').textContent = en.race;
+  document.getElementById('infoStats').textContent = en.stats;
+  document.getElementById('infoLevel').textContent = en.level;
+
+  // Surlignage des différences EN / FR (seulement si les deux versions existent)
+  INFO_ROW_IDS.forEach(([key, id]) => {
+    const row = document.getElementById(id).closest('.info-row');
+    row.classList.toggle('diff', !!fr && !card.missingEn && fr[key] !== en[key]);
+  });
 
   document.getElementById('origName').textContent = card.name_en || '—';
   document.getElementById('origDesc').textContent = card.desc_en || '—';
@@ -668,6 +734,21 @@ function renderTranslation(card) {
 
   const tagsHtml = renderTagsHtml(card.desc_fr);
 
+  // Infos de la carte traduite (FR) + comparaison avec l'original
+  const enV = cardInfoValues(card);
+  const frV = cardInfoValues(card.fr_data);
+  let diffCount = 0;
+  const infoHtml = frV
+    ? INFO_FIELDS.map(([key, label]) => {
+        const diff = !card.missingEn && frV[key] !== enV[key];
+        if (diff) diffCount++;
+        return `<div class="info-row${diff ? ' diff' : ''}"><span class="label">${label}</span><span class="value">${esc(frV[key])}</span></div>`;
+      }).join('')
+    : '';
+  const diffBadge = diffCount
+    ? `<span class="badge-source missing">⚠️ ${diffCount} différence${diffCount > 1 ? 's' : ''}</span>`
+    : '';
+
   container.innerHTML = `
     <div class="translation${card.missingFr || card.missingEn ? ' incomplete' : ''}">
       <div class="trans-head">
@@ -675,8 +756,10 @@ function renderTranslation(card) {
           <span class="badge-source manual">Traduction</span>
           ${tagsHtml}
           ${missingBadge}
+          ${diffBadge}
         </div>
       </div>
+      <div class="trans-info">${infoHtml}</div>
       <div class="trans-name">${frName}</div>
       <div class="trans-desc">${frDesc}</div>
     </div>

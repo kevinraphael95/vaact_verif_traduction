@@ -5,24 +5,22 @@
  *
  * Organisation :
  *   1. Reset + variables globales
- *   2. Thème clair (valeurs par défaut)
- *   3. Composants de la topbar (recherche, filtres, boutons)
- *   4. Layout principal (grille 2 colonnes → 1 colonne en mobile)
- *   5. Cartes visuelles (image + infos)
- *   6. Sections de contenu (texte original, traduction)
- *   7. Tags auto [XXX]
- *   8. Barre de navigation fixe
- *   9. Responsive (900px, 800px, 480px)
- *  10. Thème sombre (surcharges complètes via [data-theme="dark"])
- *
- * Conventions :
- *   • Aucune couleur n'est utilisée en dur dans les composants. Toutes les
- *     valeurs passent par des constantes littérales qui seront surchargées
- *     en bas du fichier pour le thème sombre.
- *   • Les variables CSS (--topbar-height) sont définies côté :root et
- *     mises à jour en JS quand nécessaire.
- *   • Le responsive est mobile-first « inversé » : on part du desktop et
- *     on simplifie aux breakpoints 900/800/480.
+ *   2. Loading
+ *   3. Toast
+ *   4. Topbar
+ *   5. Barre de recherche
+ *   6. Bouton filtres
+ *   7. Panneau filtres
+ *   8. Filtres personnalisés
+ *   9. Boutons topbar (aléatoire + thème)
+ *  10. Layout principal
+ *  11. Colonne gauche — infos puis image
+ *  12. Sections (texte original, traduction)
+ *  13. Traduction — spécificités (+ infos FR et différences)
+ *  14. Tags auto [XXX]
+ *  15. Nav bar
+ *  16-18. Responsive (900, 800, 480)
+ *  19. Thème sombre
  * ============================================================================ */
 
 /* ============================================================================
@@ -44,16 +42,13 @@ body {
   line-height: 1.5;
   /* Évite le rebond élastique qui ferait bouger la nav-bar fixe en haut/bas. */
   overscroll-behavior-y: none;
-  /* Place pour la nav-bar fixe. Fixe, pas conditionnel : la nav-bar est
-   * cachée au tout début mais apparaît dès que les cartes sont chargées,
-   * et Firefox mobile gère mal les changements dynamiques de padding. */
+  /* Place pour la nav-bar fixe. */
   padding-bottom: 76px;
 }
 
 /* ============================================================================
  * 2. LOADING
  * ============================================================================ */
-/* Écran plein qui couvre tout tant que les .cdb ne sont pas chargés. */
 .loading-screen {
   position: fixed;
   inset: 0;
@@ -65,8 +60,6 @@ body {
 }
 .loading-box { text-align: center; }
 
-/* Spinner purement décoratif. Pas de ralentissement en dark mode : il
- * hérite juste des bonnes couleurs via la surcharge plus bas. */
 .spinner {
   width: 48px;
   height: 48px;
@@ -80,8 +73,6 @@ body {
 
 .loading-text { color: #666; font-size: 14px; font-weight: 500; }
 
-/* Respect de la préférence système : si l'utilisateur demande moins
- * d'animations, on arrête le spinner (il devient un simple cercle gris). */
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation: none; border-top-color: #d0d5dc; }
 }
@@ -131,12 +122,8 @@ body {
   gap: 12px;
 }
 
-/* Groupe search + filtres + aléatoire + thème, poussé à droite.
- * `justify-content: flex-end` colle le dernier bouton au bord droit.
- * Le `search-wrap` (flex: 1) absorbe les variations de largeur — par
- * exemple quand un badge apparaît dans le bouton Filtres — ce qui évite
- * que les boutons suivants se décalent. C'est l'option B qu'on a choisie
- * pour reproduire le comportement du Traducteur. */
+/* Groupe search + filtres + aléatoire + thème, poussé à droite. Le
+ * `search-wrap` (flex: 1) absorbe les variations de largeur. */
 .topbar-center {
   flex: 1;
   display: flex;
@@ -146,7 +133,6 @@ body {
   margin-left: auto;
 }
 
-/* Logo — pastille bleue + texte. */
 .logo {
   font-size: 18px;
   font-weight: 700;
@@ -193,12 +179,10 @@ body {
   outline: none;
   border-color: #4a7fd6;
   background: #fff;
-  /* Halo bleuté : signale le focus sans déplacer l'élément. */
   box-shadow: 0 0 0 3px rgba(74, 127, 214, 0.15);
 }
 
-/* Bouton ✕ caché par défaut. Visible seulement si l'input contient du
- * texte, signalé par la classe .has-search sur le wrapper (toggle JS). */
+/* Bouton ✕ caché par défaut ; visible si .has-search sur le wrapper. */
 .search-clear {
   display: none;
   position: absolute;
@@ -226,17 +210,12 @@ body {
 /* ============================================================================
  * 6. BOUTON FILTRES
  * ============================================================================ */
-/* Ancre du panneau : le panneau est en position: absolute et se positionne
- * par rapport à ce wrapper, pas à la topbar entière. */
 .filters-anchor {
   position: relative;
   display: inline-flex;
   flex-shrink: 0;
 }
 
-/* `position: relative` sur le bouton lui-même permet au badge (position:
- * absolute) de se caler sur SES coins, pas sur ceux de la topbar. Sans ça,
- * le badge part se coller en haut à droite de la topbar sur mobile. */
 .btn-filters {
   position: relative;
   display: inline-flex;
@@ -268,8 +247,6 @@ body {
   color: #2a5aa8;
 }
 
-/* Badge rond qui affiche le nombre de filtres actifs. Caché si 0 (toggle
- * display via JS). */
 .btn-filters .badge-count {
   display: inline-flex;
   align-items: center;
@@ -288,9 +265,6 @@ body {
 /* ============================================================================
  * 7. PANNEAU FILTRES (popover ancré au bouton)
  * ============================================================================ */
-/* Par défaut (desktop) : position absolute sous le bouton, ancré à droite.
- * En mobile (≤800px), il passe en fixed pleine largeur — voir le bloc
- * responsive. */
 .filters-panel {
   display: none;
   position: absolute;
@@ -319,8 +293,6 @@ body {
   margin-bottom: 2px;
 }
 
-/* Une option = une ligne cliquable avec sa checkbox. Le <label> englobe
- * tout, donc cliquer n'importe où sur la ligne toggle la checkbox. */
 .filter-option {
   display: flex;
   align-items: center;
@@ -341,8 +313,7 @@ body {
   background: #f7f8fa;
 }
 
-/* Checkbox custom : on enlève le style natif et on dessine le nôtre, pour
- * que le rendu soit identique sur tous les navigateurs. */
+/* Checkbox custom : rendu identique sur tous les navigateurs. */
 .filter-option input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
@@ -362,7 +333,6 @@ body {
   background: #4a7fd6;
   border-color: #4a7fd6;
 }
-/* Le checkmark : pseudo-élément dessiné en bordure tournée à 45°. */
 .filter-option input[type="checkbox"]:checked::after {
   content: '';
   position: absolute;
@@ -375,8 +345,7 @@ body {
   transform: rotate(45deg);
 }
 
-/* Cas spécial : le filtre « Incomplètes » est un signal d'alerte, on le
- * colore en rouge pour attirer l'œil. */
+/* Le filtre « Incomplètes » est un signal d'alerte : rouge. */
 .filter-option input#filterIncomplete:checked {
   background: #c0392b;
   border-color: #c0392b;
@@ -396,8 +365,6 @@ body {
   margin: 4px 0;
 }
 
-/* Liste des mots-clés actifs. Chaque chip peut être retiré individuellement
- * via son ✕. `:empty` cache le conteneur quand il n'y a rien. */
 .custom-chips {
   display: flex;
   flex-wrap: wrap;
@@ -442,7 +409,6 @@ body {
 }
 .custom-chip .chip-remove:hover { background: rgba(42, 90, 168, 0.35); }
 
-/* Ligne d'ajout : input + bouton ＋ */
 .custom-add-row {
   display: flex;
   gap: 6px;
@@ -554,22 +520,21 @@ body {
  * ============================================================================ */
 .container { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
 
-/* Grille 2 colonnes : carte visuelle à gauche (240px fixes), contenu à droite.
+/* Grille 2 colonnes : colonne gauche (240px) + contenu à droite.
  * En mobile (≤800px) → 1 colonne. */
 .main-grid {
   display: grid;
   grid-template-columns: 240px 1fr;
   gap: 24px;
-  align-items: start; /* la colonne gauche n'étire pas sa hauteur */
+  align-items: start;
 }
 
 .content-col { display: flex; flex-direction: column; gap: 16px; }
 
 /* ============================================================================
- * 11. COLONNE GAUCHE — CARTE VISUELLE
+ * 11. COLONNE GAUCHE — INFOS PUIS IMAGE
  * ============================================================================ */
-/* Bloc sticky : reste visible pendant qu'on scrolle le texte de droite.
- * `top: 90px` = hauteur topbar + un peu de marge. */
+/* Bloc sticky : reste visible pendant qu'on scrolle le texte de droite. */
 .card-visual {
   background: #fff;
   border-radius: 12px;
@@ -578,8 +543,16 @@ body {
   position: sticky;
   top: 90px;
 }
-/* Cadre de l'image : fond sombre dégradé (rend bien même si l'image a des
- * bords irréguliers). Le placeholder 🃏 est positionné en absolu dessus. */
+
+/* Les infos sont maintenant AU-DESSUS de l'image. */
+.card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+/* Cadre de l'image (en bas) : fond sombre dégradé. */
 .card-image {
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -590,7 +563,6 @@ body {
   justify-content: center;
   color: #666;
   overflow: hidden;
-  margin-bottom: 12px;
   font-size: 40px;
   position: relative;
 }
@@ -598,11 +570,9 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: top center; /* Force l'alignement de l'image rognée par le haut */
+  object-position: top center;
   display: block;
 }
-/* Placeholder visible tant que l'image n'est pas chargée (ou en cas de
- * 404 côté CDN). Le JS le retire seulement après l'event `load`. */
 .img-placeholder {
   position: absolute;
   inset: 0;
@@ -611,12 +581,10 @@ body {
   justify-content: center;
   font-size: 48px;
   color: #555;
-  pointer-events: none; /* ne bloque pas les clics sur l'image en dessous */
+  pointer-events: none;
 }
 
-/* Petites lignes « Label : valeur » sous l'image. */
-.card-info { display: flex; flex-direction: column; gap: 6px; }
-
+/* Lignes « Label : valeur » (utilisées à gauche ET dans le bloc traduction). */
 .info-row {
   display: flex;
   justify-content: space-between;
@@ -644,11 +612,17 @@ body {
   white-space: nowrap;
 }
 
+/* 🆕 Différence entre l'original (EN) et la traduction (FR) */
+.info-row.diff {
+  background: #fae0dd;
+  outline: 1px solid #e0a39b;
+}
+.info-row.diff .label { color: #a82a1a; }
+.info-row.diff .value { color: #a82a1a; }
+
 /* ============================================================================
  * 12. SECTIONS (texte original, traduction)
  * ============================================================================ */
-/* Style commun aux cartes de contenu : fond blanc, bord gauche bleu
- * (accent visuel), radius généreux. */
 .section,
 .translation {
   background: #fff;
@@ -673,8 +647,6 @@ body {
   margin-bottom: 10px;
   color: #1a1a1a;
 }
-/* `white-space: pre-wrap` conserve les sauts de ligne du .cdb (les
- * descriptions sont multi-lignes, on ne veut pas les écraser). */
 .original-desc {
   font-size: 14px;
   line-height: 1.6;
@@ -697,10 +669,18 @@ body {
   gap: 8px;
   font-size: 12px;
   color: #777;
-  flex-wrap: wrap; /* les badges peuvent passer à la ligne si trop nombreux */
+  flex-wrap: wrap;
 }
 
-/* Badges de statut (Traduction, manquant, etc.). */
+/* 🆕 Infos de la carte traduite : grille de lignes d'info */
+.trans-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.trans-info:empty { display: none; }
+
 .badge-source {
   padding: 3px 8px;
   border-radius: 4px;
@@ -715,8 +695,7 @@ body {
 .trans-name { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
 .trans-desc { font-size: 14px; color: #333; line-height: 1.6; white-space: pre-wrap; }
 
-/* Variante « carte incomplète » : bord gauche rouge au lieu de bleu,
- * fond très légèrement rosé. Attire l'œil sans crier. */
+/* Variante « carte incomplète » : bord gauche rouge, fond rosé. */
 .translation.incomplete {
   border-left-color: #c0392b;
   background: #fdf6f5;
@@ -729,10 +708,6 @@ body {
 /* ============================================================================
  * 14. TAGS AUTO — badges [XXX] extraits des descriptions
  * ============================================================================ */
-/* Les couleurs (background + color) sont injectées en inline par
- * renderTagsHtml() : elles dépendent d'un hash du tag ET du thème actif.
- * Impossible de tout faire en CSS pur, donc on garde uniquement la mise
- * en forme ici. */
 .tag-badge {
   display: inline-flex;
   align-items: center;
@@ -754,9 +729,6 @@ body {
   right: 0;
   background: #fff;
   border-top: 1px solid #e0e4e8;
-  /* Padding bottom fixe : env(safe-area-inset-bottom) retourne 0 sur
-   * Firefox Android, et une valeur plus grande rapproche les boutons du
-   * bord bas de l'écran (là où la barre Firefox se trouve). */
   padding: 12px 20px 16px;
   z-index: 20;
   box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
@@ -782,12 +754,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  /* Tap instantané au doigt : sans ça, le navigateur attend 300ms pour
-   * distinguer un simple tap d'un double-tap (zoom). */
   touch-action: manipulation;
-  /* Retire le flash bleu au tap sur Android. */
   -webkit-tap-highlight-color: transparent;
-  /* Taille tactile minimale recommandée (Apple / Google). */
   min-height: 44px;
 }
 .nav-btn:hover:not(:disabled) {
@@ -801,8 +769,6 @@ body {
 /* ============================================================================
  * 16. RESPONSIVE — 900px
  * ============================================================================ */
-/* Sous 900px : on masque le libellé « Filtres » et on garde juste l'icône ≡
- * pour libérer de la place dans la topbar. */
 @media (max-width: 900px) {
   .btn-filters-label { display: none; }
   .btn-filters::before {
@@ -816,18 +782,11 @@ body {
  * 17. RESPONSIVE — 800px (mobile / tablette portrait)
  * ============================================================================ */
 @media (max-width: 800px) {
-  /* Padding fixe (pas de env()) : Firefox Android ne supporte pas
-   * safe-area-inset-bottom. 74px laisse juste la place pour la nav-bar
-   * (~64px) + un peu de marge. */
   body { padding-bottom: 74px; }
 
-  /* On masque les textes des boutons, on ne garde que les icônes. */
   .btn-random-label,
   .logo-text { display: none; }
 
-  /* La topbar se réorganise : logo + boutons sur la 1re ligne, le groupe
-   * search + filtres + aléatoire + thème sur la 2e (order: 3 les pousse
-   * en dessous du logo). */
   .topbar { padding: 10px 0; }
   .topbar-inner {
     padding: 0 10px;
@@ -861,14 +820,12 @@ body {
     right: 5px;
   }
 
-  /* Boutons carrés de 38px sur mobile (au lieu de pilules). */
   .btn-filters {
     width: 38px;
     height: 38px;
     padding: 0;
     gap: 0;
   }
-  /* Le badge sort du bouton (position absolue) pour ne pas l'agrandir. */
   .btn-filters .badge-count {
     position: absolute;
     top: -4px;
@@ -888,10 +845,6 @@ body {
   }
   .btn-theme { width: 38px; height: 38px; font-size: 15px; }
 
-  /* Le panneau filtres passe en fixed plein-largeur, ancré sous la topbar.
-   * La hauteur est lue depuis --topbar-height (mise à jour en JS) pour
-   * ne pas dépendre d'une valeur en dur qui casserait si on change la
-   * topbar (par exemple quand elle passe sur 2 lignes en mobile). */
   .filters-anchor { position: static; }
   .filters-panel {
     position: fixed;
@@ -902,20 +855,18 @@ body {
     max-height: calc(100vh - var(--topbar-height, 60px) - 24px);
   }
 
-  /* Grille passe en 1 colonne : la carte visuelle passe au-dessus du
-   * contenu. */
   .main-grid { grid-template-columns: 1fr; gap: 12px; }
 
-  /* Carte : image à gauche, infos à droite (comme le Traducteur) au lieu
-   * de l'image centrée + infos en dessous en grille 2×2. */
+  /* Mobile : image à gauche, infos à droite. */
   .card-visual {
-    position: static; /* plus de sticky en mobile */
+    position: static;
     padding: 12px;
     display: flex;
     gap: 14px;
     align-items: flex-start;
   }
   .card-image {
+    order: -1;
     width: 140px;
     height: 140px;
     flex-shrink: 0;
@@ -926,11 +877,14 @@ body {
     flex: 1;
     min-width: 0;
     gap: 5px;
+    margin-bottom: 0;
   }
 
   .info-row { padding: 6px 9px; font-size: 11px; }
   .info-row .label { font-size: 9px; }
   .info-row .value { font-size: 11px; }
+
+  .trans-info { grid-template-columns: 1fr 1fr; }
 
   .section, .translation { padding: 14px; border-radius: 10px; }
   .section-title { margin-bottom: 10px; font-size: 10px; }
@@ -939,7 +893,6 @@ body {
 
   .container { padding: 0 12px; margin: 16px auto; }
 
-  /* Nav-bar mobile : padding fixe, pas de env(). */
   .nav-bar { padding: 10px 12px 14px; }
   .nav-btn { padding: 9px 14px; font-size: 12px; }
   .nav-center { font-size: 12px; }
@@ -953,6 +906,7 @@ body {
   .info-row { padding: 5px 7px; font-size: 10px; }
   .info-row .label { font-size: 8px; }
   .info-row .value { font-size: 10px; }
+  .trans-info { grid-template-columns: 1fr; }
   .trans-name, .original-name { font-size: 14px; }
   .trans-desc, .original-desc { font-size: 12px; }
   .nav-btn { padding: 8px 10px; font-size: 11px; }
@@ -961,19 +915,8 @@ body {
 /* ============================================================================
  * 19. THÈME SOMBRE
  * ----------------------------------------------------------------------------
- * Sur toutes les règles ci-dessous, on surcharge uniquement les couleurs et
- * les bordures. Aucune mise en page n'est modifiée : la structure reste
- * strictement identique au thème clair, ce qui évite les surprises quand
- * on bascule.
- *
- * Palette utilisée en dark :
- *   • Fond body            #16161e
- *   • Surfaces (cards)     #1e1e28
- *   • Surfaces alt (input) #252530
- *   • Bordures             #2e2e3c
- *   • Accent (bleu)        #5a8fe6 (variante plus claire du bleu clair)
- *   • Texte principal      #e4e4ea
- *   • Texte atténué        #a0a0b0 / #8888a0
+ * Palette : fond #16161e · surfaces #1e1e28 · inputs #252530 · bordures #2e2e3c
+ * accent #5a8fe6 · texte #e4e4ea / atténué #a0a0b0 / #8888a0
  * ============================================================================ */
 
 [data-theme="dark"] body {
@@ -1126,7 +1069,6 @@ body {
 [data-theme="dark"] .section,
 [data-theme="dark"] .translation { border-left-color: #5a8fe6; }
 
-/* Carte incomplète : bord gauche rouge + fond légèrement plus sombre. */
 [data-theme="dark"] .translation.incomplete {
   border-left-color: #e05a4a;
   background: #2a1c1c;
@@ -1141,6 +1083,14 @@ body {
 [data-theme="dark"] .info-row .label { color: #8888a0; }
 [data-theme="dark"] .info-row .value { color: #e4e4ea; }
 
+/* 🆕 Différences EN / FR en thème sombre */
+[data-theme="dark"] .info-row.diff {
+  background: rgba(224, 90, 74, 0.18);
+  outline-color: rgba(224, 90, 74, 0.5);
+}
+[data-theme="dark"] .info-row.diff .label { color: #e07a6a; }
+[data-theme="dark"] .info-row.diff .value { color: #e07a6a; }
+
 /* --- Textes --- */
 [data-theme="dark"] .section-title { color: #5a5a70; }
 [data-theme="dark"] .original-name,
@@ -1148,7 +1098,7 @@ body {
 [data-theme="dark"] .original-desc,
 [data-theme="dark"] .trans-desc { color: #c0c0d0; }
 
-/* --- Badges (les couleurs des tags restent gérées en JS) --- */
+/* --- Badges --- */
 [data-theme="dark"] .badge-source.manual {
   background: rgba(90, 143, 230, 0.15);
   color: #7aa8e8;
