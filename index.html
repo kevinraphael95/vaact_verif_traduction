@@ -104,8 +104,9 @@
 <div class="container" id="mainContainer" style="display:none;">
   <div class="main-grid">
 
-    <!-- Colonne gauche : infos de l'original (EN) en haut, image en dessous -->
+    <!-- Colonne gauche : original (EN) — infos puis image -->
     <div class="card-visual">
+      <div class="card-visual-title">Original (EN)</div>
       <div class="card-info">
         <div class="info-row"><span class="label">ID</span><span class="value" id="infoId">—</span></div>
         <div class="info-row"><span class="label">Type</span><span class="value" id="infoType">—</span></div>
@@ -119,6 +120,7 @@
       </div>
     </div>
 
+    <!-- Colonne centrale : textes -->
     <div class="content-col">
       <div class="section">
         <div class="section-title">📖 Texte original (anglais)</div>
@@ -129,6 +131,22 @@
       </div>
 
       <div id="translationSection"></div>
+    </div>
+
+    <!-- Colonne droite : traduction (FR) — infos puis image -->
+    <div class="card-visual">
+      <div class="card-visual-title">Traduction (FR)</div>
+      <div class="card-info">
+        <div class="info-row"><span class="label">ID</span><span class="value" id="infoIdFr">—</span></div>
+        <div class="info-row"><span class="label">Type</span><span class="value" id="infoTypeFr">—</span></div>
+        <div class="info-row"><span class="label">Attribut</span><span class="value" id="infoAttrFr">—</span></div>
+        <div class="info-row"><span class="label">Race</span><span class="value" id="infoRaceFr">—</span></div>
+        <div class="info-row"><span class="label">ATK / DEF</span><span class="value" id="infoStatsFr">—</span></div>
+        <div class="info-row"><span class="label">Niveau</span><span class="value" id="infoLevelFr">—</span></div>
+      </div>
+      <div class="card-image">
+        <img id="cardImgFr" alt="">
+      </div>
     </div>
 
   </div>

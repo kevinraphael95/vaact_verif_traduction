@@ -11,9 +11,9 @@
 //    5. render()            → affiche la carte courante dans le DOM
 //    6. événements          → navigation, filtres, recherche, thème
 //
-// 🆕 Les infos structurelles (type, attribut, race, ATK/DEF, niveau) sont
-//    affichées pour l'original (EN) ET pour la traduction (FR). Les lignes qui
-//    diffèrent sont surlignées en rouge des deux côtés.
+// 🆕 Trois colonnes : bloc original (EN) à gauche, textes au centre, bloc
+//    traduction (FR) à droite. Chaque bloc = infos (type, attribut, race,
+//    ATK/DEF, niveau) + image. Les lignes qui diffèrent sont surlignées en rouge.
 //
 // Dépendances : sql.js 1.10.3 (CDN).
 //
@@ -379,21 +379,25 @@ function ensurePlaceholder(parent) {
   return ph;
 }
 
-async function loadCardImage(card) {
-  const imgEl = document.getElementById('cardImg');
-  if (!imgEl) return;
+// L'image est affichée dans les DEUX blocs (original à gauche, traduction à droite).
+const CARD_IMG_IDS = ['cardImg', 'cardImgFr'];
 
-  // Annule la demande précédente si elle n'est pas encore partie
-  clearTimeout(imageTimer);
-
+function resetCardImg(imgEl, card) {
   imgEl.onload = null;
   imgEl.onerror = null;
   imgEl.removeAttribute('src');
   imgEl.style.display = 'none';
   imgEl.alt = card?.name_fr || card?.name_en || 'Carte';
+  ensurePlaceholder(imgEl.parentElement);
+}
 
-  const parent = imgEl.parentElement;
-  ensurePlaceholder(parent);
+async function loadCardImage(card) {
+  const imgs = CARD_IMG_IDS.map(id => document.getElementById(id)).filter(Boolean);
+  if (!imgs.length) return;
+
+  // Annule la demande précédente si elle n'est pas encore partie
+  clearTimeout(imageTimer);
+  imgs.forEach(imgEl => resetCardImg(imgEl, card));
 
   imageTimer = setTimeout(async () => {
     const url = await fetchCardImage(card);
@@ -401,16 +405,19 @@ async function loadCardImage(card) {
     if (getFilteredCards()[currentIndex] !== card) return;
     if (!url) return;
 
-    imgEl.onload = () => {
-      const ph = parent.querySelector('.img-placeholder');
-      if (ph) ph.remove();
-      imgEl.style.display = 'block';
-    };
-    imgEl.onerror = () => {
-      imgEl.removeAttribute('src');
-      imgEl.style.display = 'none';
-    };
-    imgEl.src = url;
+    imgs.forEach(imgEl => {
+      const parent = imgEl.parentElement;
+      imgEl.onload = () => {
+        const ph = parent.querySelector('.img-placeholder');
+        if (ph) ph.remove();
+        imgEl.style.display = 'block';
+      };
+      imgEl.onerror = () => {
+        imgEl.removeAttribute('src');
+        imgEl.style.display = 'none';
+      };
+      imgEl.src = url;
+    });
   }, IMAGE_LOAD_DELAY_MS);
 }
 
@@ -643,40 +650,39 @@ function mergeCards(enCards, frCards) {
 // ============================================================================
 // 11. RENDU — affichage de la carte courante
 // ============================================================================
-// Correspondance champ comparé → id de la ligne d'info côté original (EN).
-const INFO_ROW_IDS = [
-  ['type', 'infoType'],
-  ['attr', 'infoAttr'],
-  ['race', 'infoRace'],
-  ['stats', 'infoStats'],
-  ['level', 'infoLevel'],
-];
+// Deux blocs identiques : à gauche l'original (EN), à droite la traduction (FR).
+// Les lignes qui diffèrent entre les deux sont surlignées des deux côtés.
+const INFO_IDS_EN = { id: 'infoId', type: 'infoType', attr: 'infoAttr', race: 'infoRace', stats: 'infoStats', level: 'infoLevel' };
+const INFO_IDS_FR = { id: 'infoIdFr', type: 'infoTypeFr', attr: 'infoAttrFr', race: 'infoRaceFr', stats: 'infoStatsFr', level: 'infoLevelFr' };
+
+function fillInfoBlock(ids, idText, values, compareTo) {
+  const idEl = document.getElementById(ids.id);
+  if (idEl) idEl.textContent = idText || '—';
+  INFO_FIELDS.forEach(([key]) => {
+    const el = document.getElementById(ids[key]);
+    if (!el) return;
+    el.textContent = values ? values[key] : '—';
+    const differs = !!(values && compareTo && values[key] !== compareTo[key]);
+    el.closest('.info-row')?.classList.toggle('diff', differs);
+  });
+}
 
 function render() {
   if (!CARDS.length) return;
   const filtered = getFilteredCards();
 
   if (!filtered.length) {
-    ['infoId', 'infoType', 'infoAttr', 'infoRace', 'infoStats', 'infoLevel'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.textContent = '—';
-        el.closest('.info-row')?.classList.remove('diff');
-      }
-    });
+    fillInfoBlock(INFO_IDS_EN, '—', null, null);
+    fillInfoBlock(INFO_IDS_FR, '—', null, null);
     document.getElementById('origName').textContent = '—';
     document.getElementById('origDesc').textContent = 'Aucune carte ne correspond aux filtres actifs.';
     document.getElementById('translationSection').innerHTML = '';
 
     clearTimeout(imageTimer);
-    const imgEl = document.getElementById('cardImg');
-    if (imgEl) {
-      imgEl.onload = null;
-      imgEl.onerror = null;
-      imgEl.removeAttribute('src');
-      imgEl.style.display = 'none';
-      ensurePlaceholder(imgEl.parentElement);
-    }
+    CARD_IMG_IDS.forEach(id => {
+      const imgEl = document.getElementById(id);
+      if (imgEl) resetCardImg(imgEl, null);
+    });
 
     document.getElementById('navCenter').textContent = '0 / 0';
     document.getElementById('prevBtn').disabled = true;
@@ -689,21 +695,13 @@ function render() {
 
   loadCardImage(card);
 
-  // Infos de l'original (EN)
-  const en = cardInfoValues(card);
+  // Original (EN) : rien à afficher si la carte n'existe que dans le fichier FR
+  const en = card.missingEn ? null : cardInfoValues(card);
+  // Traduction (FR) : rien à afficher si la carte n'existe que dans le fichier EN
   const fr = cardInfoValues(card.fr_data);
-  document.getElementById('infoId').textContent = card.id || '—';
-  document.getElementById('infoType').textContent = en.type;
-  document.getElementById('infoAttr').textContent = en.attr;
-  document.getElementById('infoRace').textContent = en.race;
-  document.getElementById('infoStats').textContent = en.stats;
-  document.getElementById('infoLevel').textContent = en.level;
 
-  // Surlignage des différences EN / FR (seulement si les deux versions existent)
-  INFO_ROW_IDS.forEach(([key, id]) => {
-    const row = document.getElementById(id).closest('.info-row');
-    row.classList.toggle('diff', !!fr && !card.missingEn && fr[key] !== en[key]);
-  });
+  fillInfoBlock(INFO_IDS_EN, card.id, en, fr);
+  fillInfoBlock(INFO_IDS_FR, card.id, fr, en);
 
   document.getElementById('origName').textContent = card.name_en || '—';
   document.getElementById('origDesc').textContent = card.desc_en || '—';
@@ -734,17 +732,12 @@ function renderTranslation(card) {
 
   const tagsHtml = renderTagsHtml(card.desc_fr);
 
-  // Infos de la carte traduite (FR) + comparaison avec l'original
-  const enV = cardInfoValues(card);
+  // Nombre de différences EN / FR (type, attribut, race, stats, niveau)
+  const enV = card.missingEn ? null : cardInfoValues(card);
   const frV = cardInfoValues(card.fr_data);
-  let diffCount = 0;
-  const infoHtml = frV
-    ? INFO_FIELDS.map(([key, label]) => {
-        const diff = !card.missingEn && frV[key] !== enV[key];
-        if (diff) diffCount++;
-        return `<div class="info-row${diff ? ' diff' : ''}"><span class="label">${label}</span><span class="value">${esc(frV[key])}</span></div>`;
-      }).join('')
-    : '';
+  const diffCount = (enV && frV)
+    ? INFO_FIELDS.filter(([key]) => enV[key] !== frV[key]).length
+    : 0;
   const diffBadge = diffCount
     ? `<span class="badge-source missing">⚠️ ${diffCount} différence${diffCount > 1 ? 's' : ''}</span>`
     : '';
@@ -759,7 +752,6 @@ function renderTranslation(card) {
           ${diffBadge}
         </div>
       </div>
-      <div class="trans-info">${infoHtml}</div>
       <div class="trans-name">${frName}</div>
       <div class="trans-desc">${frDesc}</div>
     </div>

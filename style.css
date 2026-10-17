@@ -14,7 +14,7 @@
  *   8. Filtres personnalisés
  *   9. Boutons topbar (aléatoire + thème)
  *  10. Layout principal
- *  11. Colonne gauche — infos puis image
+ *  11. Blocs latéraux (EN à gauche, FR à droite) — infos puis image
  *  12. Sections (texte original, traduction)
  *  13. Traduction — spécificités (+ infos FR et différences)
  *  14. Tags auto [XXX]
@@ -520,11 +520,11 @@ body {
  * ============================================================================ */
 .container { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
 
-/* Grille 2 colonnes : colonne gauche (240px) + contenu à droite.
+/* Grille 3 colonnes : bloc original (EN) | textes | bloc traduction (FR).
  * En mobile (≤800px) → 1 colonne. */
 .main-grid {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 240px 1fr 240px;
   gap: 24px;
   align-items: start;
 }
@@ -544,7 +544,17 @@ body {
   top: 90px;
 }
 
-/* Les infos sont maintenant AU-DESSUS de l'image. */
+/* Titre du bloc (Original / Traduction) */
+.card-visual-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #999;
+  margin-bottom: 10px;
+}
+
+/* Les infos sont AU-DESSUS de l'image. */
 .card-info {
   display: flex;
   flex-direction: column;
@@ -672,15 +682,6 @@ body {
   flex-wrap: wrap;
 }
 
-/* 🆕 Infos de la carte traduite : grille de lignes d'info */
-.trans-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 6px;
-  margin-bottom: 14px;
-}
-.trans-info:empty { display: none; }
-
 .badge-source {
   padding: 3px 8px;
   border-radius: 4px;
@@ -778,6 +779,10 @@ body {
   }
 }
 
+@media (max-width: 1000px) {
+  .main-grid { grid-template-columns: 200px 1fr 200px; gap: 16px; }
+}
+
 /* ============================================================================
  * 17. RESPONSIVE — 800px (mobile / tablette portrait)
  * ============================================================================ */
@@ -862,11 +867,13 @@ body {
     position: static;
     padding: 12px;
     display: flex;
+    flex-wrap: wrap;
     gap: 14px;
     align-items: flex-start;
   }
+  .card-visual-title { width: 100%; margin-bottom: 0; }
   .card-image {
-    order: -1;
+    order: 1;
     width: 140px;
     height: 140px;
     flex-shrink: 0;
@@ -874,6 +881,7 @@ body {
     font-size: 36px;
   }
   .card-info {
+    order: 2;
     flex: 1;
     min-width: 0;
     gap: 5px;
@@ -883,8 +891,6 @@ body {
   .info-row { padding: 6px 9px; font-size: 11px; }
   .info-row .label { font-size: 9px; }
   .info-row .value { font-size: 11px; }
-
-  .trans-info { grid-template-columns: 1fr 1fr; }
 
   .section, .translation { padding: 14px; border-radius: 10px; }
   .section-title { margin-bottom: 10px; font-size: 10px; }
@@ -906,7 +912,6 @@ body {
   .info-row { padding: 5px 7px; font-size: 10px; }
   .info-row .label { font-size: 8px; }
   .info-row .value { font-size: 10px; }
-  .trans-info { grid-template-columns: 1fr; }
   .trans-name, .original-name { font-size: 14px; }
   .trans-desc, .original-desc { font-size: 12px; }
   .nav-btn { padding: 8px 10px; font-size: 11px; }
@@ -1077,6 +1082,9 @@ body {
   background: rgba(224, 90, 74, 0.18);
   color: #e07a6a;
 }
+
+/* --- Titre des blocs --- */
+[data-theme="dark"] .card-visual-title { color: #5a5a70; }
 
 /* --- Lignes d'info --- */
 [data-theme="dark"] .info-row { background: #252530; }
