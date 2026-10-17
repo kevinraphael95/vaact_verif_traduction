@@ -516,6 +516,12 @@ body {
 }
 
 /* ============================================================================
+ * ICÔNE DU BOUTON THÈME — gérée en CSS (évite le flash au chargement)
+ * ============================================================================ */
+[data-theme="dark"]  #themeToggle::before { content: "☀️"; }
+[data-theme="light"] #themeToggle::before { content: "🌙"; }
+
+/* ============================================================================
  * 10. LAYOUT PRINCIPAL
  * ============================================================================ */
 .container { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
