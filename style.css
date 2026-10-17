@@ -14,7 +14,7 @@
  *   8. Filtres personnalisés
  *   9. Boutons topbar (aléatoire + thème)
  *  10. Layout principal
- *  11. Blocs latéraux (EN à gauche, FR à droite) — infos puis image
+ *  11. Blocs latéraux (EN à gauche, FR à droite) — image puis infos
  *  12. Sections (texte original, traduction)
  *  13. Traduction — spécificités (+ infos FR et différences)
  *  14. Tags auto [XXX]
@@ -554,16 +554,16 @@ body {
   margin-bottom: 10px;
 }
 
-/* Les infos sont AU-DESSUS de l'image. */
+/* Les infos sont EN DESSOUS de l'image. */
 .card-info {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 12px;
 }
 
-/* Cadre de l'image (en bas) : fond sombre dégradé. */
+/* Cadre de l'image (en haut) : fond sombre dégradé. */
 .card-image {
+  margin-bottom: 12px;
   width: 100%;
   aspect-ratio: 1 / 1;
   background: linear-gradient(135deg, #2a2a2a, #0a0a0a);
