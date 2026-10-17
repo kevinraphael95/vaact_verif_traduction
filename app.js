@@ -1007,7 +1007,6 @@ function applyTheme(theme) {
   const isDark = theme === 'dark';
   const btn = document.getElementById('themeToggle');
   if (btn) {
-    btn.textContent = isDark ? '☀️' : '🌙';
     btn.setAttribute('aria-label', isDark ? 'Basculer en thème clair' : 'Basculer en thème sombre');
   }
 }
